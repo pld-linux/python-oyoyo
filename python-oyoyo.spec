@@ -7,19 +7,20 @@ Summary:	Fast, simple IRC module suitable for clients, bots and games
 Summary(pl.UTF-8):	Szybki, prosty moduł IRC odpowiedni dla klientów, botów i gier
 Name:		python-oyoyo
 Version:	0.0.0
-Release:	8
+Release:	9
 License:	MIT
 Group:		Libraries/Python
 #Source0Download: https://pypi.org/simple/oyoyo/
 Source0:	https://files.pythonhosted.org/packages/source/o/oyoyo/oyoyo-%{version}dev.tar.gz
 # Source0-md5:	ab5d74a96de284239cc0624dd5c1f8b5
+Patch0:		python3.patch
+Patch1:		version.patch
 URL:		https://pypi.org/project/oyoyo/
 %if %{with python2}
 BuildRequires:	python-modules >= 1:2.5
 BuildRequires:	python-setuptools
 %endif
 %if %{with python3}
-BuildRequires:	python3-2to3 >= 1:3.2
 BuildRequires:	python3-modules >= 1:3.2
 BuildRequires:	python3-setuptools
 %endif
@@ -53,6 +54,8 @@ się na potrzeby botów, klientów i czegokolwiek innego (nawet gier).
 
 %prep
 %setup -q -n oyoyo-%{version}dev
+%patch -P0 -p1
+%patch -P1 -p1
 
 %build
 %if %{with python2}

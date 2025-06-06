@@ -1,0 +1,293 @@
+--- oyoyo-0.0.0dev.orig/setup.py	2025-06-07 00:31:45.266660131 +0200
++++ oyoyo-0.0.0dev/setup.py	2012-07-31 08:54:07.000000000 +0200
+@@ -14,11 +14,6 @@
+     use_setuptools()
+     from setuptools import setup, find_packages
+ 
+-# Call setup function, adding use_2to3 kwarg if under python 3
+-extras = {}
+-if is_py3:
+-    extras['use_2to3'] = True
+-
+ setup(
+     name='oyoyo',
+     version="",
+@@ -30,5 +35,4 @@
+     [console_scripts]
+     oyoyo_example_bot = oyoyo.examplebot:main
+     """,
+-    **extras
+ )
+--- oyoyo-0.0.0dev.orig/oyoyo/client.py	2012-07-31 08:54:07.000000000 +0200
++++ oyoyo-0.0.0dev/oyoyo/client.py	2021-11-21 18:13:00.000000000 +0100
+@@ -62,7 +51,7 @@
+         means if you use a plain while loop your app will consume 100% cpu.
+         To enable blocking pass blocking=True. 
+ 
+-        >>> class My_Handler(DefaultCommandHandler):
++        >>> from oyoyo import helpers        >>> class My_Handler(DefaultCommandHandler):
+         ...     def privmsg(self, prefix, command, args):
+         ...         print "%s said %s" % (prefix, args[1])
+         ...
+@@ -138,7 +127,10 @@
+         try:
+             logging.info('connecting to %s:%s' % (self.host, self.port))
+             self.socket.connect(("%s" % self.host, self.port))
+-            if not self.blocking:
++            if self.blocking:
++                # this also overrides default timeout
++                self.socket.setblocking(1)
++            else:
+                 self.socket.setblocking(0)
+             
+             helpers.nick(self, self.nick)
+@@ -151,7 +143,7 @@
+             while not self._end:
+                 try:
+                     buffer += self.socket.recv(1024)
+-                except socket.error, e:
++                except socket.error as e:
+                     try:  # a little dance of compatibility to get the errno
+                         errno = e.errno
+                     except AttributeError:
+@@ -179,6 +171,7 @@
+                 self.socket.close()
+                     
+ 
++# noinspection PyPep8Naming
+ class IRCApp:
+     """ This class manages several IRCClient instances without the use of threads.
+     (Non-threaded) Timer functionality is also included.
+@@ -223,13 +216,13 @@
+         while self.running:
+             found_one_alive = False
+ 
+-            for client, clientdesc in self._clients.iteritems():
++            for client, clientdesc in self._clients.items():
+                 if clientdesc.con is None:
+                     clientdesc.con = client.connect()
+                 
+                 try:
+                     clientdesc.con.next()
+-                except Exception, e:
++                except Exception as e:
+                     logging.error('client error %s' % e)
+                     logging.error(traceback.format_exc())
+                     if clientdesc.autoreconnect:
+--- oyoyo-0.0.0dev.orig/oyoyo/cmdhandler.py	2012-07-31 08:54:07.000000000 +0200
++++ oyoyo-0.0.0dev/oyoyo/cmdhandler.py	2021-11-21 18:13:00.000000000 +0100
+@@ -66,12 +61,12 @@
+         ["command", "sub", "func"].
+         """
+         if isinstance(in_command_parts, (str, bytes)):
+-            in_command_parts = in_command_parts.split(bytes('.', 'ascii'))
++            in_command_parts = in_command_parts.split(".")
+         command_parts = in_command_parts[:]
+ 
+         p = self
+         while command_parts:
+-            cmd = command_parts.pop(0).decode('ascii')
++            cmd = command_parts.pop(0)
+             if cmd.startswith('_'):
+                 raise ProtectedCommandError(in_command_parts)
+ 
+@@ -93,6 +88,7 @@
+     def run(self, command, *args):
+         """ finds and runs a command """
+         logging.debug("processCommand %s(%s)" % (command, args))
++        # print(command, args)
+ 
+         try:
+             f = self.get(command)
+@@ -104,7 +100,7 @@
+ 
+         try:
+             f(*args)
+-        except Exception, e:
++        except Exception as e:
+             logging.error('command raised %s' % e)
+             logging.error(traceback.format_exc())
+             raise CommandError(command)
+@@ -126,13 +122,14 @@
+         self.client.send('PONG', server)
+ 
+ 
++# noinspection PyPep8Naming
+ class DefaultBotCommandHandler(CommandHandler):
+     """ default command handler for bots. methods/attributes are made 
+     available as commands """
+ 
+     @protected
+     def getVisibleCommands(self, obj=None):
+-        test = (lambda x: isinstance(x, CommandHandler) or \
++        test = (lambda x: isinstance(x, CommandHandler) or
+                 inspect.ismethod(x) or inspect.isfunction(x))
+         members = inspect.getmembers(obj or self, test)          
+         return [m for m, _ in members 
+@@ -150,20 +147,21 @@
+         else:
+             try:
+                 f = self.get(arg)
+-            except CommandError, e:
++            except CommandError as e:
+                 helpers.msg(self.client, dest, str(e))
+                 return
+                 
+             doc = f.__doc__.strip() if f.__doc__ else "No help available"
+ 
+             if not inspect.ismethod(f):
+-                subcommands = self.getVisibleCommands(f)
+-                if subcommands:
+-                    doc += " [sub commands: %s]" % " ".join(subcommands)
++                sub_commands = self.getVisibleCommands(f)
++                if sub_commands:
++                    doc += " [sub commands: %s]" % " ".join(sub_commands)
+ 
+             helpers.msg(self.client, dest, "%s: %s" % (arg, doc)) 
+ 
+ 
++# noinspection PyPep8Naming
+ class BotCommandHandler(DefaultCommandHandler):
+     """ complete command handler for bots """
+ 
+@@ -197,7 +195,7 @@
+ 
+         try:
+             self.command_handler.run(command, prefix, dest, *arg)
+-        except CommandError, e:
++        except CommandError as e:
+             helpers.msg(self.client, dest, str(e))
+         return True
+  
+--- oyoyo-0.0.0dev.orig/oyoyo/helpers.py	2012-07-31 08:54:07.000000000 +0200
++++ oyoyo-0.0.0dev/oyoyo/helpers.py	2021-11-21 18:13:00.000000000 +0100
+@@ -19,6 +19,22 @@
+ 
+ import random
+ 
++
++def join(client, channel):
++    # Dummy function - replaced later
++    pass
++
++
++def part(client, channel):
++    # Dummy function - replaced later
++    pass
++
++
++def nick(client, nick):
++    # Dummy function - replaced later
++    pass
++
++
+ def msg(cli, user, msg):
+     for line in msg.split('\n'):
+         cli.send("PRIVMSG", user, ":%s" % line)
+@@ -51,9 +72,10 @@
+     cli.send("QUIT :%s" % msg)
+     cli._end = 1
+ 
++
+ def user(cli, username, realname=None):
+-    cli.send("USER", username, cli.host, cli.host, 
+-        realname or username)
++    cli.send("USER", username, cli.host, cli.host, realname or username)
++
+ 
+ _simple = (
+     'join',
+@@ -70,8 +94,12 @@
+     m = sys.modules[__name__]
+     for t in _simple:
+         setattr(m, t, simplecmd(t.upper()))
++
++
+ _addsimple()
+ 
++
++# noinspection PyPep8Naming
+ def _addNumerics():
+     import sys
+     from oyoyo import ircevents
+@@ -79,9 +108,10 @@
+         def f(cli, *args):
+             cli.send(cmd_num, *args)
+         return f
++
+     m = sys.modules[__name__]
+-    for num, name in ircevents.numeric_events.iteritems():
++    for num, name in ircevents.numeric_events.items():
+         setattr(m, name, numericcmd(num, name))
+         
+-_addNumerics()
+ 
++_addNumerics()
+--- oyoyo-0.0.0dev.orig/oyoyo/ircevents.py	2012-07-31 08:54:07.000000000 +0200
++++ oyoyo-0.0.0dev/oyoyo/ircevents.py	2021-11-21 18:13:00.000000000 +0100
+@@ -205,5 +205,5 @@
+     "pong",
+ ]
+ 
+-all_events = generated_events + protocol_events + numeric_events.values()
++all_events = generated_events + protocol_events + list(numeric_events.values())
+ 
+--- oyoyo-0.0.0dev.orig/oyoyo/parse.py	2012-07-31 08:54:07.000000000 +0200
++++ oyoyo-0.0.0dev/oyoyo/parse.py	2021-11-21 18:13:00.000000000 +0100
+@@ -46,8 +39,10 @@
+ 
+     <crlf>     ::= CR LF
+     """
+-    parts = element.strip().split(bytes(" ", "ascii"))
+-    if parts[0].startswith(bytes(':', 'ascii')):
++    print(element)
++    element = element.decode("UTF-8", errors="replace")
++    parts = element.strip().split(" ")
++    if parts[0].startswith(":"):
+         prefix = parts[0][1:]
+         command = parts[1]
+         args = parts[2:]
+@@ -60,18 +55,18 @@
+         try:
+             command = numeric_events[command]
+         except KeyError:
+-            logging.warn('unknown numeric event %s' % command)
++            logging.warning('unknown numeric event %s' % command)
+     command = command.lower()
+ 
+-    if args[0].startswith(bytes(':', 'ascii')):
+-        args = [bytes(" ", "ascii").join(args)[1:]]
++    if args[0].startswith(":"):
++        args = [" ".join(args)[1:]]
+     else:
+         for idx, arg in enumerate(args):           
+-            if arg.startswith(bytes(':', 'ascii')):
+-                args = args[:idx] + [bytes(" ", 'ascii').join(args[idx:])[1:]]
++            if arg.startswith(":"):
++                args = args[:idx] + [" ".join(args[idx:])[1:]]
+                 break
+ 
+-    return (prefix, command, args)
++    return prefix, command, args
+ 
+ 
+ def parse_nick(name):
+@@ -83,7 +78,7 @@
+     try:
+         nick, rest = name.split('!')
+     except ValueError:
+-        return (name, None, None, None)
++        return name, None, None, None
+     try:
+         mode, rest = rest.split('=')
+     except ValueError:
+@@ -91,7 +86,6 @@
+     try:
+         user, host = rest.split('@')
+     except ValueError:
+-        return (name, mode, rest, None)
+-
+-    return (name, mode, user, host)
++        return name, mode, rest, None
+  
++    return name, mode, user, host

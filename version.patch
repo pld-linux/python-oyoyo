@@ -1,0 +1,11 @@
+--- oyoyo-0.0.0dev/setup.py~	2025-06-07 00:31:45.000000000 +0200
++++ oyoyo-0.0.0dev/setup.py	2025-06-07 00:35:41.436660123 +0200
+@@ -16,7 +16,7 @@
+ 
+ setup(
+     name='oyoyo',
+-    version="",
++    version="0.0.0",
+     description='a fast, simple irc module suitable for clients, bots and games',
+     author='Dunk Fordyce, Daniel da Silva (current)',
+     author_email='dunkfordyce@gmail.com, meltingwax@gmail.com',
